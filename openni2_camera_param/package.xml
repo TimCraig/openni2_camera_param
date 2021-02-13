@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>openni2_camera_param</name>
+  <version>1.4.2</version>
+  <description>Drivers for the Asus Xtion and Primesense Devices. For using a kinect
+  with ROS, try the <a href="http://wiki.ros.org/freenect_stack">freenect stack</a> 
+  </description>
+  <author email="jkammerl@todo.todo">Julius Kammerl</author>
+  <license>BSD</license>
+
+  <maintainer email="TimCraig@Druai.com">Tim Craig</maintainer>
+  <maintainer email="mferguson@fetchrobotics.com">Michael Ferguson</maintainer>
+  <maintainer email="isaac.saito@plusonerobotics.com">Isaac I. Y. Saito</maintainer>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>camera_info_manager</depend>
+  <depend>default_idl_generators</depend>
+  <depend>libopenni2-dev</depend>
+  <depend>openni2_camera_param_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
+  <depend>image_transport</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+
+</package>
