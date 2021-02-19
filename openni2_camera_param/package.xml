@@ -22,6 +22,8 @@
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>image_transport</depend>
+  <depend>OpenCV</depend>
+  <depend>cv_bridge</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

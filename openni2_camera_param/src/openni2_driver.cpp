@@ -50,10 +50,10 @@ OpenNI2Driver::OpenNI2Driver(const rclcpp::NodeOptions& node_options)
         data_skip_ir_counter_(0),
         data_skip_color_counter_(0),
         data_skip_depth_counter_(0),
-        ir_subscribers_(false),
-        color_subscribers_(false),
-        depth_subscribers_(false),
-        depth_raw_subscribers_(false),
+//        ir_subscribers_(false),
+//        color_subscribers_(false),
+//        depth_subscribers_(false),
+//        depth_raw_subscribers_(false),
         enable_reconnect_(false)
    {
    // Declare parameters
@@ -82,6 +82,12 @@ OpenNI2Driver::OpenNI2Driver(const rclcpp::NodeOptions& node_options)
 
    color_info_url_ = declare_parameter<std::string>("rgb_camera_info_url", "");
    ir_info_url_ = declare_parameter<std::string>("depth_camera_info_url", "");
+
+   publish_rgb_ = declare_parameter<bool>("publish_rgb", true);
+   publish_depth_raw_ = declare_parameter<bool>("publish_depth_raw", true);
+   publish_depth_ = declare_parameter<bool>("publish_depth", false);
+   publish_ir_ = declare_parameter<bool>("publish_ir", false);
+
 
    genVideoModeTableMap();
    std::string mode = declare_parameter<std::string>("ir_mode", "VGA_30Hz");
@@ -169,7 +175,9 @@ void OpenNI2Driver::advertiseROSTopics()
    // Asus Xtion PRO does not have an RGB camera
    if (device_->hasColorSensor())
       {
-      pub_color_ = it.advertiseCamera("rgb/image_raw", 1);
+//      pub_color_ = it.advertiseCamera("rgb/image_raw", 1);
+      rclcpp::QoS qos(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
+      pub_rgb_ = create_publisher<sensor_msgs::msg::Image>("rgb/image_raw", qos);
       }
 
    if (device_->hasIRSensor())
@@ -179,7 +187,9 @@ void OpenNI2Driver::advertiseROSTopics()
 
    if (device_->hasDepthSensor())
       {
-      pub_depth_raw_ = it.advertiseCamera("depth/image_raw", 1);
+   //   pub_depth_raw_ = it.advertiseCamera("depth/image_raw", 1);
+      rclcpp::QoS qos(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
+      pub_depth_raw_ = create_publisher<sensor_msgs::msg::Image>("depth/image_raw", qos);
       pub_depth_ = it.advertiseCamera("depth/image", 1);
       pub_projector_info_ = create_publisher<sensor_msgs::msg::CameraInfo>("projector/camera_info", 1);
       }
@@ -390,9 +400,9 @@ void OpenNI2Driver::colorConnectCb()
    std::lock_guard<std::mutex> lock(connect_mutex_);
 
    // This does not appear to work
-   color_subscribers_ = (pub_color_.getNumSubscribers() > 0);
+//   color_subscribers_ = (pub_color_.getNumSubscribers() > 0);
 
-   if (color_subscribers_ && !device_->isColorStreamStarted())
+   if (publish_rgb_ && !device_->isColorStreamStarted())
       {
       // Can't stream IR and RGB at the same time. Give RGB
       // preference.
@@ -419,14 +429,14 @@ void OpenNI2Driver::colorConnectCb()
          forceSetExposure();
          }
       }
-   else if (!color_subscribers_ && device_->isColorStreamStarted())
+   else if (!publish_rgb_ && device_->isColorStreamStarted())
       {
       RCLCPP_INFO(get_logger(), "Stopping color stream.");
       device_->stopColorStream();
 
       // Start IR if it's been blocked on RGB subscribers
-      bool need_ir = pub_ir_.getNumSubscribers() > 0;
-      if (need_ir && !device_->isIRStreamStarted())
+//      bool need_ir = pub_ir_.getNumSubscribers() > 0;
+      if (publish_ir_ && !device_->isIRStreamStarted())
          {
          device_->setIRFrameCallback(std::bind(&OpenNI2Driver::newIRFrameCallback, this, std::placeholders::_1));
 
@@ -445,23 +455,24 @@ void OpenNI2Driver::depthConnectCb()
       RCLCPP_WARN_STREAM(get_logger(), "Callback in " << __FUNCTION__ << "failed due to null device");
       return;
       }
+
    std::lock_guard<std::mutex> lock(connect_mutex_);
 
    // These does not appear to work
-   depth_subscribers_ = (pub_depth_.getNumSubscribers() > 0);
-   depth_raw_subscribers_ = (pub_depth_raw_.getNumSubscribers() > 0);
-   projector_info_subscribers_ = (pub_projector_info_->get_subscription_count() > 0);
+//   depth_subscribers_ = (pub_depth_.getNumSubscribers() > 0);
+//   depth_raw_subscribers_ = (pub_depth_raw_.getNumSubscribers() > 0);
+//   projector_info_subscribers_ = (pub_projector_info_->get_subscription_count() > 0);
 
-   bool need_depth = (depth_subscribers_ || depth_raw_subscribers_);
+//   bool need_depth = (depth_subscribers_ || depth_raw_subscribers_);
 
-   if (need_depth && !device_->isDepthStreamStarted())
+   if ((publish_depth_ || publish_depth_raw_) && !device_->isDepthStreamStarted())
       {
       device_->setDepthFrameCallback(std::bind(&OpenNI2Driver::newDepthFrameCallback, this, std::placeholders::_1));
 
       RCLCPP_INFO(get_logger(), "Starting depth stream.");
       device_->startDepthStream();
       }
-   else if (!need_depth && device_->isDepthStreamStarted())
+   else if ((!publish_depth_ && !publish_depth_raw_) && device_->isDepthStreamStarted())
       {
       RCLCPP_INFO(get_logger(), "Stopping depth stream.");
       device_->stopDepthStream();
@@ -482,9 +493,9 @@ void OpenNI2Driver::irConnectCb()
 
    // This does not appear to work
    // ir_subscribers_ = pub_ir_.getNumSubscribers() > 0;
-   ir_subscribers_ = ((count_subscribers("ir/image") > 0) || (count_subscribers("ir/camera_info") > 0));
+//   ir_subscribers_ = ((count_subscribers("ir/image") > 0) || (count_subscribers("ir/camera_info") > 0));
 
-   if (ir_subscribers_ && !device_->isIRStreamStarted())
+   if (publish_ir_ && !device_->isIRStreamStarted())
       {
       // Can't stream IR and RGB at the same time
       if (device_->isColorStreamStarted())
@@ -499,7 +510,7 @@ void OpenNI2Driver::irConnectCb()
          device_->startIRStream();
          }
       }
-   else if (!ir_subscribers_ && device_->isIRStreamStarted())
+   else if (!publish_ir_ && device_->isIRStreamStarted())
       {
       RCLCPP_INFO(get_logger(), "Stopping IR stream.");
       device_->stopIRStream();
@@ -521,7 +532,7 @@ void OpenNI2Driver::newIRFrameCallback(sensor_msgs::msg::Image::SharedPtr image)
       {
       data_skip_ir_counter_ = 0;
 
-      if (ir_subscribers_)
+      if (publish_ir_)
          {
          image->header.frame_id = ir_frame_id_;
          image->header.stamp = rclcpp::Time(image->header.stamp) + rclcpp::Duration(ir_time_offset_ / 1e9);
@@ -540,17 +551,19 @@ void OpenNI2Driver::newColorFrameCallback(sensor_msgs::msg::Image::SharedPtr ima
       // Don't publish to invalid publishers
       return;
       }
-   std::cout << "newColorFrameCallback - counter=" << data_skip_color_counter_ << " data_skip_=" << data_skip_ << " color_subscribers_=" << color_subscribers_ << std::endl;
+
+   std::cout << "newColorFrameCallback - counter=" << data_skip_color_counter_ << " data_skip_=" << data_skip_ << std::endl;
    if ((++data_skip_color_counter_) % data_skip_ == 0)
       {
       data_skip_color_counter_ = 0;
 
-      if (color_subscribers_)
+      if (publish_rgb_)
          {
          image->header.frame_id = color_frame_id_;
          image->header.stamp = rclcpp::Time(image->header.stamp) + rclcpp::Duration(color_time_offset_ / 1e9);
          std::cout << "Publishing Color Image" << std::endl;
-         pub_color_.publish(image, getColorCameraInfo(image->width, image->height, image->header.stamp));
+//         pub_color_.publish(image, getColorCameraInfo(image->width, image->height, image->header.stamp));
+         pub_rgb_->publish(*image);
          }
       }
 
@@ -569,10 +582,12 @@ void OpenNI2Driver::newDepthFrameCallback(sensor_msgs::msg::Image::SharedPtr ima
       {
       data_skip_depth_counter_ = 0;
 
-      if (depth_raw_subscribers_ || depth_subscribers_ || projector_info_subscribers_)
+//     if (depth_raw_subscribers_ || depth_subscribers_ || projector_info_subscribers_)
+      if (publish_depth_raw_)
          {
          image->header.stamp = rclcpp::Time(image->header.stamp) + rclcpp::Duration(depth_time_offset_ / 1e9);
 
+         // Add z offset to image data
          if (z_offset_mm_ != 0)
             {
             uint16_t* data = reinterpret_cast<uint16_t*>(&image->data[0]);
@@ -581,6 +596,7 @@ void OpenNI2Driver::newDepthFrameCallback(sensor_msgs::msg::Image::SharedPtr ima
                   data[i] += z_offset_mm_;
             }
 
+         // Scale the z of the image
          if (fabs(z_scaling_ - 1.0) > 1e-6)
             {
             uint16_t* data = reinterpret_cast<uint16_t*>(&image->data[0]);
@@ -602,26 +618,29 @@ void OpenNI2Driver::newDepthFrameCallback(sensor_msgs::msg::Image::SharedPtr ima
             cam_info = getDepthCameraInfo(image->width, image->height, image->header.stamp);
             }
 
-         if (depth_raw_subscribers_)
+         if (publish_depth_raw_)
             {
             std::cout << "Publishing Depth Raw Image" << std::endl;
-            pub_depth_raw_.publish(image, cam_info);
+            pub_depth_raw_->publish(*image);
+//            pub_depth_raw_.publish(image, cam_info);
             }
-
-         if (depth_subscribers_)
+#if 0
+         if (publish_depth_)
             {
             const sensor_msgs::msg::Image::SharedPtr floating_point_image = rawToFloatingPointConversion(image);
             std::cout << "Publishing Depth Floating Point Image" << std::endl;
             pub_depth_.publish(floating_point_image, cam_info);
             }
-
+#endif
          // Projector "info" probably only useful for
          // working with disparity images
+#if 0
          if (projector_info_subscribers_)
             {
             std::cout << "Publishing Projector Camera Info" << std::endl;
             pub_projector_info_->publish(*getProjectorCameraInfo(image->width, image->height, image->header.stamp));
             }
+#endif
          }
       }
 

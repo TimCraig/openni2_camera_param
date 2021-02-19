@@ -44,23 +44,27 @@ def generate_launch_description():
     namespace = '/camera'
 
     container = launch_ros.actions.ComposableNodeContainer(
-            name='container',
-            namespace=namespace,
-            package='rclcpp_components',
-            executable='component_container',
-            composable_node_descriptions=[
+        name='container',
+        namespace=namespace,
+        package='rclcpp_components',
+        executable='component_container',
+        composable_node_descriptions=[
                 # Just the driver
                 launch_ros.descriptions.ComposableNode(
-                    package='openni2_camera',
+                    package='openni2_camera_param',
                     plugin='openni2_wrapper::OpenNI2Driver',
                     name='driver',
                     parameters=[{'depth_registration': True},
                                 {'use_device_time': False},
-                                {'device_id': '1d27/0600@1/3'}],
+                                {'device_id': '1d27/0600@1/3'},
+                                {'publish_rgb': True},
+                                {'publish_depth_raw': True},
+                                {'publish_depth': False}
+                                ],
                     namespace=namespace,
                 ),
-            ],
-            output='screen',
+        ],
+        output='screen',
     )
 
     return launch.LaunchDescription([container])

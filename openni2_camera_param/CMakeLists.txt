@@ -12,6 +12,8 @@ find_package(openni2_camera_param_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
+find_package(cv_bridge REQUIRED)
+find_package(OpenCV REQUIRED)
 
 find_package(PkgConfig)
 pkg_check_modules(PC_OPENNI2 libopenni2)
@@ -46,10 +48,6 @@ ament_target_dependencies(openni2_param_wrapper
   rclcpp
 )
 
-add_executable(openni2_param_subscriber test/openni2_subscriber.cpp)
-target_link_libraries(openni2_param_subscriber openni2_param_wrapper)
-
-
 add_library(openni2_camera_param SHARED
   src/openni2_driver.cpp
 )
@@ -76,6 +74,17 @@ target_link_libraries(list_devices
   openni2_param_wrapper
 )
 
+add_executable(openni2_param_subscriber test/openni2_subscriber.cpp)
+target_link_libraries(openni2_param_subscriber)
+ament_target_dependencies(openni2_param_subscriber
+#  image_transport
+#  openni2_camera_param_msgs
+  sensor_msgs
+  rclcpp
+  OpenCV
+  cv_bridge
+)
+
 if (UNIX AND NOT APPLE)
   add_executable(usb_reset src/usb_reset.c)
   set(ADDITIONAL_EXECUTABLES "usb_reset")
@@ -86,6 +95,7 @@ install(
     list_devices
     openni2_param_wrapper
     openni2_camera_param
+    openni2_param_subscriber
     ${ADDITIONAL_EXECUTABLES}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
