@@ -37,6 +37,7 @@ add_library(openni2_param_wrapper SHARED
   src/openni2_device_manager.cpp
   src/openni2_exception.cpp
   src/openni2_video_mode.cpp
+  src/openni2_video_stream.cpp
 )
 target_link_libraries(openni2_param_wrapper
   ${PC_OPENNI2_LIBRARIES}

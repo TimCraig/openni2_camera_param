@@ -71,32 +71,15 @@ void Openni2Subscriber::depth_callback(const sensor_msgs::msg::Image::SharedPtr 
    {
    RCLCPP_INFO(get_logger(), "Received Depth Image (%d,%d) Encoding %s\n", image->width, image->height,
                image->encoding.c_str());
-#if 0
-   uint16_t* data = reinterpret_cast<uint16_t*>(&image->data[0]);
-   uint16_t max = 0;
-   uint16_t min = 65000;
-   for (size_t i = 0; i < image->width * image->height; i++)
-      {
-      //      std::cout << data[i] << std::endl;
-      if (data[i] > max)
-         {
-         max = data[i];
-         }
 
-      if ((data[i] > 0) && (data[i] < min))
-         {
-         min = data[i];
-         }
-      }
-
-   std::cout << "Max = " << max << " Min = " << min << std::endl;
-#endif
    using namespace cv_bridge;
 
-   CvImagePtr image16 = toCvCopy(image);
+   //   CvImagePtr image16 = toCvCopy(image);
+   CvImageConstPtr image16 = toCvShare(image);
 
    cv::Mat img8(image16->image.rows, image16->image.cols, CV_8UC1);
 
+   // Normalize to an 8 bit grayscale image so imshow will display it
    cv::normalize(image16->image, img8, 0.0, 255.0, cv::NORM_MINMAX, CV_8U);
 
    cv::imshow("Depth Image", img8);
@@ -117,6 +100,7 @@ int main(int argc, char* argv[])
    {
    rclcpp::init(argc, argv);
    rclcpp::spin(std::make_shared<Openni2Subscriber>());
+   cv::destroyAllWindows();
    rclcpp::shutdown();
 
    return 0;

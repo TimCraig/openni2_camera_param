@@ -35,13 +35,12 @@
 #include <sensor_msgs/distortion_models.hpp>
 #include <sensor_msgs/image_encodings.hpp>
 
+#include <chrono>
 #include <functional>
 #include <thread>
-#include <chrono>
 
 namespace openni2_wrapper
    {
-
 using namespace std::chrono_literals;
 
 OpenNI2Driver::OpenNI2Driver(const rclcpp::NodeOptions& node_options)
@@ -50,10 +49,6 @@ OpenNI2Driver::OpenNI2Driver(const rclcpp::NodeOptions& node_options)
         data_skip_ir_counter_(0),
         data_skip_color_counter_(0),
         data_skip_depth_counter_(0),
-//        ir_subscribers_(false),
-//        color_subscribers_(false),
-//        depth_subscribers_(false),
-//        depth_raw_subscribers_(false),
         enable_reconnect_(false)
    {
    // Declare parameters
@@ -83,6 +78,7 @@ OpenNI2Driver::OpenNI2Driver(const rclcpp::NodeOptions& node_options)
    color_info_url_ = declare_parameter<std::string>("rgb_camera_info_url", "");
    ir_info_url_ = declare_parameter<std::string>("depth_camera_info_url", "");
 
+   // Parameters to control what is published
    publish_rgb_ = declare_parameter<bool>("publish_rgb", true);
    publish_depth_raw_ = declare_parameter<bool>("publish_depth_raw", true);
    publish_depth_ = declare_parameter<bool>("publish_depth", false);
@@ -143,11 +139,12 @@ void OpenNI2Driver::periodic()
       applyConfigToOpenNIDevice();
 
       // Register parameter callback
-      auto pParameterhandler = add_on_set_parameters_callback(std::bind(&OpenNI2Driver::paramCb, this, std::placeholders::_1));
+      auto pParameterhandler =
+            add_on_set_parameters_callback(std::bind(&OpenNI2Driver::paramCb, this, std::placeholders::_1));
       initialized_ = true;
       }
 
-   // TODO: check subscriber counts, enable cameras
+   // Connect the streams from the device
    colorConnectCb();
    depthConnectCb();
    irConnectCb();
@@ -175,7 +172,7 @@ void OpenNI2Driver::advertiseROSTopics()
    // Asus Xtion PRO does not have an RGB camera
    if (device_->hasColorSensor())
       {
-//      pub_color_ = it.advertiseCamera("rgb/image_raw", 1);
+      //      pub_color_ = it.advertiseCamera("rgb/image_raw", 1);
       rclcpp::QoS qos(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
       pub_rgb_ = create_publisher<sensor_msgs::msg::Image>("rgb/image_raw", qos);
       }
@@ -187,7 +184,7 @@ void OpenNI2Driver::advertiseROSTopics()
 
    if (device_->hasDepthSensor())
       {
-   //   pub_depth_raw_ = it.advertiseCamera("depth/image_raw", 1);
+      //   pub_depth_raw_ = it.advertiseCamera("depth/image_raw", 1);
       rclcpp::QoS qos(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
       pub_depth_raw_ = create_publisher<sensor_msgs::msg::Image>("depth/image_raw", qos);
       pub_depth_ = it.advertiseCamera("depth/image", 1);
@@ -207,8 +204,8 @@ void OpenNI2Driver::advertiseROSTopics()
    color_info_manager_ = std::make_shared<camera_info_manager::CameraInfoManager>(this, color_name, color_info_url_);
    ir_info_manager_ = std::make_shared<camera_info_manager::CameraInfoManager>(this, ir_name, ir_info_url_);
 
-   get_serial_server = create_service<openni2_camera_param_msgs::srv::GetSerial>("get_serial",
-               std::bind(&OpenNI2Driver::getSerialCb, this, std::placeholders::_1, std::placeholders::_2));
+   get_serial_server = create_service<openni2_camera_param_msgs::srv::GetSerial>(
+         "get_serial", std::bind(&OpenNI2Driver::getSerialCb, this, std::placeholders::_1, std::placeholders::_2));
 
    return;
    }
@@ -400,23 +397,24 @@ void OpenNI2Driver::colorConnectCb()
    std::lock_guard<std::mutex> lock(connect_mutex_);
 
    // This does not appear to work
-//   color_subscribers_ = (pub_color_.getNumSubscribers() > 0);
+   //   color_subscribers_ = (pub_color_.getNumSubscribers() > 0);
 
-   if (publish_rgb_ && !device_->isColorStreamStarted())
+   if (publish_rgb_ && !device_->isStreamStarted(OpenNI2Device::COLOR))
       {
       // Can't stream IR and RGB at the same time. Give RGB
       // preference.
-      if (device_->isIRStreamStarted())
+      if (device_->isStreamStarted(OpenNI2Device::IR))
          {
          RCLCPP_ERROR(get_logger(), "Cannot stream RGB and IR at the same time. Streaming RGB only.");
          RCLCPP_INFO(get_logger(), "Stopping IR stream.");
-         device_->stopIRStream();
+         device_->stopStream(OpenNI2Device::IR);
          }
 
-      device_->setColorFrameCallback(std::bind(&OpenNI2Driver::newColorFrameCallback, this, std::placeholders::_1));
+      device_->setFrameCallback(OpenNI2Device::COLOR,
+                                std::bind(&OpenNI2Driver::newColorFrameCallback, this, std::placeholders::_1));
 
       RCLCPP_INFO(get_logger(), "Starting color stream.");
-      device_->startColorStream();
+      device_->startStream(OpenNI2Device::COLOR);
 
       // Workaound for
       // https://github.com/ros-drivers/openni2_camera/issues/51
@@ -429,19 +427,20 @@ void OpenNI2Driver::colorConnectCb()
          forceSetExposure();
          }
       }
-   else if (!publish_rgb_ && device_->isColorStreamStarted())
+   else if (!publish_rgb_ && device_->isStreamStarted(OpenNI2Device::COLOR))
       {
       RCLCPP_INFO(get_logger(), "Stopping color stream.");
-      device_->stopColorStream();
+      device_->stopStream(OpenNI2Device::COLOR);
 
       // Start IR if it's been blocked on RGB subscribers
-//      bool need_ir = pub_ir_.getNumSubscribers() > 0;
-      if (publish_ir_ && !device_->isIRStreamStarted())
+      //      bool need_ir = pub_ir_.getNumSubscribers() > 0;
+      if (publish_ir_ && !device_->isStreamStarted(OpenNI2Device::IR))
          {
-         device_->setIRFrameCallback(std::bind(&OpenNI2Driver::newIRFrameCallback, this, std::placeholders::_1));
+         device_->setFrameCallback(OpenNI2Device::IR,
+                                   std::bind(&OpenNI2Driver::newIRFrameCallback, this, std::placeholders::_1));
 
          RCLCPP_INFO(get_logger(), "Starting IR stream.");
-         device_->startIRStream();
+         device_->startStream(OpenNI2Device::IR);
          }
       }
 
@@ -458,24 +457,18 @@ void OpenNI2Driver::depthConnectCb()
 
    std::lock_guard<std::mutex> lock(connect_mutex_);
 
-   // These does not appear to work
-//   depth_subscribers_ = (pub_depth_.getNumSubscribers() > 0);
-//   depth_raw_subscribers_ = (pub_depth_raw_.getNumSubscribers() > 0);
-//   projector_info_subscribers_ = (pub_projector_info_->get_subscription_count() > 0);
-
-//   bool need_depth = (depth_subscribers_ || depth_raw_subscribers_);
-
-   if ((publish_depth_ || publish_depth_raw_) && !device_->isDepthStreamStarted())
+   if ((publish_depth_ || publish_depth_raw_) && !device_->isStreamStarted(OpenNI2Device::DEPTH))
       {
-      device_->setDepthFrameCallback(std::bind(&OpenNI2Driver::newDepthFrameCallback, this, std::placeholders::_1));
+      device_->setFrameCallback(OpenNI2Device::DEPTH,
+                                std::bind(&OpenNI2Driver::newDepthFrameCallback, this, std::placeholders::_1));
 
       RCLCPP_INFO(get_logger(), "Starting depth stream.");
-      device_->startDepthStream();
+      device_->startStream(OpenNI2Device::DEPTH);
       }
-   else if ((!publish_depth_ && !publish_depth_raw_) && device_->isDepthStreamStarted())
+   else if ((!publish_depth_ && !publish_depth_raw_) && device_->isStreamStarted(OpenNI2Device::DEPTH))
       {
       RCLCPP_INFO(get_logger(), "Stopping depth stream.");
-      device_->stopDepthStream();
+      device_->stopStream(OpenNI2Device::DEPTH);
       }
 
    return;
@@ -491,29 +484,26 @@ void OpenNI2Driver::irConnectCb()
 
    std::lock_guard<std::mutex> lock(connect_mutex_);
 
-   // This does not appear to work
-   // ir_subscribers_ = pub_ir_.getNumSubscribers() > 0;
-//   ir_subscribers_ = ((count_subscribers("ir/image") > 0) || (count_subscribers("ir/camera_info") > 0));
-
-   if (publish_ir_ && !device_->isIRStreamStarted())
+   if (publish_ir_ && !device_->isStreamStarted(OpenNI2Device::IR))
       {
       // Can't stream IR and RGB at the same time
-      if (device_->isColorStreamStarted())
+      if (device_->isStreamStarted(OpenNI2Device::COLOR))
          {
          RCLCPP_ERROR(get_logger(), "Cannot stream RGB and IR at the same time. Streaming RGB only.");
          }
       else
          {
-         device_->setIRFrameCallback(std::bind(&OpenNI2Driver::newIRFrameCallback, this, std::placeholders::_1));
+         device_->setFrameCallback(OpenNI2Device::IR,
+                                   std::bind(&OpenNI2Driver::newIRFrameCallback, this, std::placeholders::_1));
 
          RCLCPP_INFO(get_logger(), "Starting IR stream.");
-         device_->startIRStream();
+         device_->startStream(OpenNI2Device::IR);
          }
       }
-   else if (!publish_ir_ && device_->isIRStreamStarted())
+   else if (!publish_ir_ && device_->isStreamStarted(OpenNI2Device::IR))
       {
       RCLCPP_INFO(get_logger(), "Stopping IR stream.");
-      device_->stopIRStream();
+      device_->stopStream(OpenNI2Device::IR);
       }
 
    return;
@@ -527,7 +517,8 @@ void OpenNI2Driver::newIRFrameCallback(sensor_msgs::msg::Image::SharedPtr image)
       return;
       }
 
-   //std::cout << "newIRFrameCallback - counter=" << data_skip_ir_counter_ << " data_skip_=" << data_skip_ << " ir_subscribers_=" << ir_subscribers_ << std::endl;
+   // std::cout << "newIRFrameCallback - counter=" << data_skip_ir_counter_ << " data_skip_=" << data_skip_ << "
+   // ir_subscribers_=" << ir_subscribers_ << std::endl;
    if (((++data_skip_ir_counter_) % data_skip_) == 0)
       {
       data_skip_ir_counter_ = 0;
@@ -552,7 +543,8 @@ void OpenNI2Driver::newColorFrameCallback(sensor_msgs::msg::Image::SharedPtr ima
       return;
       }
 
-   std::cout << "newColorFrameCallback - counter=" << data_skip_color_counter_ << " data_skip_=" << data_skip_ << std::endl;
+   std::cout << "newColorFrameCallback - counter=" << data_skip_color_counter_ << " data_skip_=" << data_skip_
+             << std::endl;
    if ((++data_skip_color_counter_) % data_skip_ == 0)
       {
       data_skip_color_counter_ = 0;
@@ -562,7 +554,7 @@ void OpenNI2Driver::newColorFrameCallback(sensor_msgs::msg::Image::SharedPtr ima
          image->header.frame_id = color_frame_id_;
          image->header.stamp = rclcpp::Time(image->header.stamp) + rclcpp::Duration(color_time_offset_ / 1e9);
          std::cout << "Publishing Color Image" << std::endl;
-//         pub_color_.publish(image, getColorCameraInfo(image->width, image->height, image->header.stamp));
+         //         pub_color_.publish(image, getColorCameraInfo(image->width, image->height, image->header.stamp));
          pub_rgb_->publish(*image);
          }
       }
@@ -582,7 +574,7 @@ void OpenNI2Driver::newDepthFrameCallback(sensor_msgs::msg::Image::SharedPtr ima
       {
       data_skip_depth_counter_ = 0;
 
-//     if (depth_raw_subscribers_ || depth_subscribers_ || projector_info_subscribers_)
+      //     if (depth_raw_subscribers_ || depth_subscribers_ || projector_info_subscribers_)
       if (publish_depth_raw_)
          {
          image->header.stamp = rclcpp::Time(image->header.stamp) + rclcpp::Duration(depth_time_offset_ / 1e9);
@@ -622,7 +614,7 @@ void OpenNI2Driver::newDepthFrameCallback(sensor_msgs::msg::Image::SharedPtr ima
             {
             std::cout << "Publishing Depth Raw Image" << std::endl;
             pub_depth_raw_->publish(*image);
-//            pub_depth_raw_.publish(image, cam_info);
+            //            pub_depth_raw_.publish(image, cam_info);
             }
 #if 0
          if (publish_depth_)
@@ -685,7 +677,8 @@ sensor_msgs::msg::CameraInfo::SharedPtr OpenNI2Driver::getDefaultCameraInfo(int 
    }
 
 /// @todo Use binning/ROI properly in publishing camera infos
-sensor_msgs::msg::CameraInfo::SharedPtr OpenNI2Driver::getColorCameraInfo(int width, int height, rclcpp::Time time) const
+sensor_msgs::msg::CameraInfo::SharedPtr OpenNI2Driver::getColorCameraInfo(int width, int height,
+                                                                          rclcpp::Time time) const
    {
    sensor_msgs::msg::CameraInfo::SharedPtr info;
 
@@ -695,15 +688,16 @@ sensor_msgs::msg::CameraInfo::SharedPtr OpenNI2Driver::getColorCameraInfo(int wi
       if (info->width != width)
          {
          // Use uncalibrated values
-         RCLCPP_WARN_ONCE(get_logger(), "Image resolution doesn't match calibration of the "
+         RCLCPP_WARN_ONCE(get_logger(),
+                          "Image resolution doesn't match calibration of the "
                           "RGB camera. Using default parameters.");
-         info = getDefaultCameraInfo(width, height, device_->getColorFocalLength(height));
+         info = getDefaultCameraInfo(width, height, device_->getStreamFocalLength(OpenNI2Device::COLOR, height));
          }
       }
    else
       {
       // If uncalibrated, fill in default values
-      info = getDefaultCameraInfo(width, height, device_->getColorFocalLength(height));
+      info = getDefaultCameraInfo(width, height, device_->getStreamFocalLength(OpenNI2Device::COLOR, height));
       }
 
    // Fill in header
@@ -723,15 +717,16 @@ sensor_msgs::msg::CameraInfo::SharedPtr OpenNI2Driver::getIRCameraInfo(int width
       if (info->width != width)
          {
          // Use uncalibrated values
-         RCLCPP_WARN_ONCE(get_logger(), "Image resolution doesn't match calibration of the "
+         RCLCPP_WARN_ONCE(get_logger(),
+                          "Image resolution doesn't match calibration of the "
                           "IR camera. Using default parameters.");
-         info = getDefaultCameraInfo(width, height, device_->getIRFocalLength(height));
+         info = getDefaultCameraInfo(width, height, device_->getStreamFocalLength(OpenNI2Device::IR, height));
          }
       }
    else
       {
       // If uncalibrated, fill in default values
-      info = getDefaultCameraInfo(width, height, device_->getDepthFocalLength(height));
+      info = getDefaultCameraInfo(width, height, device_->getStreamFocalLength(OpenNI2Device::DEPTH, height));
       }
 
    // Fill in header
@@ -741,7 +736,8 @@ sensor_msgs::msg::CameraInfo::SharedPtr OpenNI2Driver::getIRCameraInfo(int width
    return (info);
    }
 
-sensor_msgs::msg::CameraInfo::SharedPtr OpenNI2Driver::getDepthCameraInfo(int width, int height, rclcpp::Time time) const
+sensor_msgs::msg::CameraInfo::SharedPtr OpenNI2Driver::getDepthCameraInfo(int width, int height,
+                                                                          rclcpp::Time time) const
    {
    // The depth image has essentially the same intrinsics as the IR
    // image, BUT the principal point is offset by half the size of the
@@ -761,7 +757,8 @@ sensor_msgs::msg::CameraInfo::SharedPtr OpenNI2Driver::getDepthCameraInfo(int wi
    return (info);
    }
 
-sensor_msgs::msg::CameraInfo::SharedPtr OpenNI2Driver::getProjectorCameraInfo(int width, int height, rclcpp::Time time) const
+sensor_msgs::msg::CameraInfo::SharedPtr OpenNI2Driver::getProjectorCameraInfo(int width, int height,
+                                                                              rclcpp::Time time) const
    {
    // The projector info is simply the depth info with the baseline
    // encoded in the P matrix. It's only purpose is to be the "right"
@@ -790,8 +787,8 @@ std::string OpenNI2Driver::resolveDeviceURI(const std::string& device_id)
       int device_index = device_number - 1;  // #1 refers to first device
       if (device_index >= available_device_URIs->size() || device_index < 0)
          {
-         THROW_OPENNI_EXCEPTION("Invalid device number %i, there are %zu devices connected.",
-               device_number, available_device_URIs->size());
+         THROW_OPENNI_EXCEPTION("Invalid device number %i, there are %zu devices connected.", device_number,
+                                available_device_URIs->size());
          }
       else
          {
@@ -804,19 +801,22 @@ std::string OpenNI2Driver::resolveDeviceURI(const std::string& device_id)
    //   <number> is the device number, for consistency with
    //   openni_camera, these start at 1
    //               although 0 specifies "any device on this bus"
-   else if ((device_id.size() > 1) && (device_id.find('@') != std::string::npos) && (device_id.find('/') == std::string::npos))
+   else if ((device_id.size() > 1) && (device_id.find('@') != std::string::npos) &&
+            (device_id.find('/') == std::string::npos))
       {
       // get index of @ character
       size_t index = device_id.find('@');
       if (index <= 0)
          {
          THROW_OPENNI_EXCEPTION("%s is not a valid device URI, you must give the bus number before the @.",
-               device_id.c_str());
+                                device_id.c_str());
          }
       if (index >= device_id.size() - 1)
          {
-         THROW_OPENNI_EXCEPTION("%s is not a valid device URI, you must give the device number "
-               "after the @, specify 0 for any device on this bus", device_id.c_str());
+         THROW_OPENNI_EXCEPTION(
+               "%s is not a valid device URI, you must give the device number "
+               "after the @, specify 0 for any device on this bus",
+               device_id.c_str());
          }
 
       // pull out device number on bus
@@ -878,8 +878,8 @@ std::string OpenNI2Driver::resolveDeviceURI(const std::string& device_id)
             else
                {
                // more than one match
-               THROW_OPENNI_EXCEPTION("Two devices match the given device id '%s': %s and %s.",
-                     device_id.c_str(), matched_uri.c_str(), s.c_str());
+               THROW_OPENNI_EXCEPTION("Two devices match the given device id '%s': %s and %s.", device_id.c_str(),
+                                      matched_uri.c_str(), s.c_str());
                }
             }
          }
@@ -975,7 +975,8 @@ void OpenNI2Driver::monitorConnection()
                bus_id_ = extractBusID(device_->getUri());
                while (rclcpp::ok() && !device_->isValid())
                   {
-                  RCLCPP_INFO(get_logger(), "Waiting for device initialization, before "
+                  RCLCPP_INFO(get_logger(),
+                              "Waiting for device initialization, before "
                               "configuring and restarting publishers");
                   std::this_thread::sleep_for(100ms);
                   }
@@ -1000,10 +1001,12 @@ void OpenNI2Driver::monitorConnection()
             // exposure is used instead.
             if ((!auto_exposure_ && !auto_white_balance_) && (exposure_ == 0))
                {
-               RCLCPP_WARN_STREAM(get_logger(), "Reconnection should not be enabled if auto expousre"
-                                        "/white balance are disabled.  Temporarily working around this issue");
-               RCLCPP_WARN_STREAM(get_logger(), "Toggling exposure and white balance to auto on re-connect"
-                                        ", otherwise image will be very dark");
+               RCLCPP_WARN_STREAM(get_logger(),
+                                  "Reconnection should not be enabled if auto expousre"
+                                  "/white balance are disabled.  Temporarily working around this issue");
+               RCLCPP_WARN_STREAM(get_logger(),
+                                  "Toggling exposure and white balance to auto on re-connect"
+                                  ", otherwise image will be very dark");
                device_->setAutoExposure(true);
                device_->setAutoWhiteBalance(true);
                RCLCPP_INFO_STREAM(get_logger(), "Waiting for color camera to come up and adjust");
@@ -1024,8 +1027,8 @@ void OpenNI2Driver::monitorConnection()
             {
             if (!device_)
                {
-               RCLCPP_INFO_STREAM(get_logger(), "Failed to re-initialize device on bus: "
-                                        << bus_id_ << ", reason: " << exception.what());
+               RCLCPP_INFO_STREAM(get_logger(), "Failed to re-initialize device on bus: " << bus_id_ << ", reason: "
+                                                                                          << exception.what());
                }
             }
          }

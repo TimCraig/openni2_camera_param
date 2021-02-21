@@ -39,6 +39,7 @@
 #include "openni2_camera/openni2_exception.h"
 #include "openni2_camera/openni2_frame_listener.h"
 #include "openni2_camera/openni2_video_mode.h"
+#include "openni2_camera/openni2_video_stream.h"
 
 #include <boost/function.hpp>
 
@@ -113,29 +114,13 @@ class OpenNI2Device
       return (openni_device_->hasSensor(openni::SENSOR_DEPTH));
       }
 
-   void startIRStream();
-   void startColorStream();
-   void startDepthStream();
-
+   void startStream(size_t stream_id);
+   void stopStream(size_t stream_id);
    void stopAllStreams();
 
-   void stopIRStream();
-   void stopColorStream();
-   void stopDepthStream();
-
-   bool isIRStreamStarted() const
+   bool isStreamStarted(size_t stream_id) const
       {
-      return (ir_video_started_);
-      }
-
-   bool isColorStreamStarted() const
-      {
-      return (color_video_started_);
-      }
-
-   bool isDepthStreamStarted() const
-      {
-      return (depth_video_started_);
+      return (video_started_[stream_id]);
       }
 
    bool isImageRegistrationModeSupported() const
@@ -162,30 +147,13 @@ class OpenNI2Device
    void setColorVideoMode(const OpenNI2VideoMode& video_mode);
    void setDepthVideoMode(const OpenNI2VideoMode& video_mode);
 
-   void setIRFrameCallback(FrameCallbackFunction callback)
+   void setFrameCallback(size_t frame, FrameCallbackFunction callback)
       {
-      ir_frame_listener->setCallback(callback);
-
+      frame_listeners_[frame]->setCallback(callback);
       return;
       }
 
-   void setColorFrameCallback(FrameCallbackFunction callback)
-      {
-      color_frame_listener->setCallback(callback);
-
-      return;
-      }
-
-   void setDepthFrameCallback(FrameCallbackFunction callback)
-      {
-      depth_frame_listener->setCallback(callback);
-
-      return;
-      }
-
-   float getIRFocalLength(int output_y_resolution) const;
-   float getColorFocalLength(int output_y_resolution) const;
-   float getDepthFocalLength(int output_y_resolution) const;
+   float getStreamFocalLength(size_t stream_id, int output_y_resolution) const;
    float getBaseline() const;
 
    void setAutoExposure(bool enable);
@@ -198,16 +166,36 @@ class OpenNI2Device
 
    void setUseDeviceTimer(bool enable);
 
+   // Vector indices for the different cameras and their streams
+   static const size_t DEPTH = 0;
+   static const size_t COLOR = 1;
+   static const size_t IR = 2;
+
    protected:
    void shutdown();
 
-   std::shared_ptr<openni::VideoStream> getIRVideoStream() const;
-   std::shared_ptr<openni::VideoStream> getColorVideoStream() const;
-   std::shared_ptr<openni::VideoStream> getDepthVideoStream() const;
+   std::shared_ptr<openni::VideoStream> getVideoStream(size_t stream) const
+      {
+      return (video_streams_[stream]);
+      }
+
+   std::shared_ptr<openni::VideoStream> getIRVideoStream() const
+      {
+      return (video_streams_[IR]);
+      }
+
+   std::shared_ptr<openni::VideoStream> getColorVideoStream() const
+      {
+      return (video_streams_[COLOR]);
+      }
+   std::shared_ptr<openni::VideoStream> getDepthVideoStream() const
+      {
+      return (video_streams_[DEPTH]);
+      }
 
    std::shared_ptr<openni::Device> openni_device_;
    std::shared_ptr<openni::DeviceInfo> device_info_;
-
+#if 0
    std::shared_ptr<OpenNI2FrameListener> ir_frame_listener;
    std::shared_ptr<OpenNI2FrameListener> color_frame_listener;
    std::shared_ptr<OpenNI2FrameListener> depth_frame_listener;
@@ -216,14 +204,22 @@ class OpenNI2Device
    mutable std::shared_ptr<openni::VideoStream> color_video_stream_;
    mutable std::shared_ptr<openni::VideoStream> depth_video_stream_;
 
+   mutable std::shared_ptr<openni2_video_stream> ir_video_stream_;
+   mutable std::shared_ptr<openni2_video_stream> color_video_stream_;
+   mutable std::shared_ptr<openni2_video_stream> depth_video_stream_;
+#endif
+   std::vector<std::shared_ptr<OpenNI2FrameListener>> frame_listeners_;
+   std::vector<std::shared_ptr<openni2_video_stream>> video_streams_;
+
    mutable std::vector<OpenNI2VideoMode> ir_video_modes_;
    mutable std::vector<OpenNI2VideoMode> color_video_modes_;
    mutable std::vector<OpenNI2VideoMode> depth_video_modes_;
-
+#if 0
    bool ir_video_started_;
    bool color_video_started_;
    bool depth_video_started_;
-
+#endif
+   std::vector<bool> video_started_;
    bool image_registration_activated_;
 
    bool use_device_time_;
