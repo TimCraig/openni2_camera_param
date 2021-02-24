@@ -39,8 +39,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
 
-#include <boost/function.hpp>
-
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -48,9 +47,8 @@
 
 namespace openni2_wrapper
    {
-
 class OpenNI2TimerFilter;
-using FrameCallbackFunction = boost::function<void(sensor_msgs::msg::Image::SharedPtr image)>;
+using FrameCallbackFunction = std::function<void(sensor_msgs::msg::Image::SharedPtr image)>;
 
 class OpenNI2FrameListener : public openni::VideoStream::NewFrameListener
    {

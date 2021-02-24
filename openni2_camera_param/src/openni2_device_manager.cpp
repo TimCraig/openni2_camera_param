@@ -36,7 +36,6 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-//#include <boost/thread/mutex.hpp>
 #include <mutex>
 #include <set>
 #include <string>

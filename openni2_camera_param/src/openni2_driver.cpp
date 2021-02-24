@@ -170,19 +170,19 @@ void OpenNI2Driver::advertiseROSTopics()
    std::lock_guard<std::mutex> lock(connect_mutex_);
 
    // Asus Xtion PRO does not have an RGB camera
-   if (device_->hasColorSensor())
+   if (device_->hasSensor(OpenNI2Device::COLOR))
       {
       //      pub_color_ = it.advertiseCamera("rgb/image_raw", 1);
       rclcpp::QoS qos(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
       pub_rgb_ = create_publisher<sensor_msgs::msg::Image>("rgb/image_raw", qos);
       }
 
-   if (device_->hasIRSensor())
+   if (device_->hasSensor(OpenNI2Device::IR))
       {
       pub_ir_ = it.advertiseCamera("ir/image", 1);
       }
 
-   if (device_->hasDepthSensor())
+   if (device_->hasSensor(OpenNI2Device::DEPTH))
       {
       //   pub_depth_raw_ = it.advertiseCamera("depth/image_raw", 1);
       rclcpp::QoS qos(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));

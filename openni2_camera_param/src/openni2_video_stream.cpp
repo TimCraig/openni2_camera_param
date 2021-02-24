@@ -3,8 +3,8 @@
 
 namespace openni2_wrapper
    {
-openni2_video_stream::openni2_video_stream(openni::Device& device, openni::SensorType sensor_type, std::string name)
-      : sensor_type_{sensor_type}, name_{name}
+OpenNI2VideoStream::OpenNI2VideoStream(openni::Device& device, openni::SensorType sensor_type, std::string name)
+      : sensor_type_{sensor_type}, name_{name}, started_(false)
    {
    if (device.hasSensor(sensor_type_))
       {
@@ -15,6 +15,25 @@ openni2_video_stream::openni2_video_stream(openni::Device& device, openni::Senso
                                 openni::OpenNI::getExtendedError());
          }
       }
+
+   return;
+   }
+
+void OpenNI2VideoStream::startStream(std::shared_ptr<OpenNI2FrameListener> frame_listener)
+   {
+   setMirroringEnabled(false);
+   start();
+   addNewFrameListener(frame_listener.get());
+   started_ = true;
+
+   return;
+   }
+
+void OpenNI2VideoStream::stopStream(std::shared_ptr<OpenNI2FrameListener> frame_listener)
+   {
+   started_ = false;
+   removeNewFrameListener(frame_listener.get());
+   stop();
 
    return;
    }

@@ -49,7 +49,6 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-//#include <boost/thread/mutex.hpp>
 #include <mutex>
 
 namespace openni2_wrapper
@@ -91,7 +90,7 @@ class OpenNI2Driver : public rclcpp::Node
    void irConnectCb();
 
    void getSerialCb(const std::shared_ptr<openni2_camera_param_msgs::srv::GetSerial::Request> request,
-                                std::shared_ptr<openni2_camera_param_msgs::srv::GetSerial::Response> response)
+                    std::shared_ptr<openni2_camera_param_msgs::srv::GetSerial::Response> response)
       {
       response->serial = device_manager_->getSerial(device_->getUri());
       return;
@@ -137,11 +136,11 @@ class OpenNI2Driver : public rclcpp::Node
    std::mutex connect_mutex_;
 
    // published topics
- //  image_transport::CameraPublisher pub_color_;
+   //  image_transport::CameraPublisher pub_color_;
    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_rgb_;
    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_depth_raw_;
    image_transport::CameraPublisher pub_depth_;
- //  image_transport::CameraPublisher pub_depth_raw_;
+   //  image_transport::CameraPublisher pub_depth_raw_;
    image_transport::CameraPublisher pub_ir_;
    rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr pub_projector_info_;
 
@@ -186,11 +185,11 @@ class OpenNI2Driver : public rclcpp::Node
    bool auto_white_balance_;
    int exposure_;
 
- //  bool ir_subscribers_;
- //  bool color_subscribers_;
- //  bool depth_subscribers_;
- //  bool depth_raw_subscribers_;
- //  bool projector_info_subscribers_;
+   //  bool ir_subscribers_;
+   //  bool color_subscribers_;
+   //  bool depth_subscribers_;
+   //  bool depth_raw_subscribers_;
+   //  bool projector_info_subscribers_;
 
    bool use_device_time_;
 

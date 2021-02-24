@@ -3,30 +3,32 @@
 #include "OpenNI.h"
 
 //#include "openni2_camera/openni2_exception.h"
-//#include "openni2_camera/openni2_frame_listener.h"
+#include "openni2_camera/openni2_frame_listener.h"
 //#include "openni2_camera/openni2_video_mode.h"
 
-//#include <boost/function.hpp>
-
-//#include <cstdint>
-
-//#include <rclcpp/rclcpp.hpp>
-//#include <sensor_msgs/msg/image.hpp>
-
+#include <memory>
 #include <string>
 //#include <vector>
 
 namespace openni2_wrapper
    {
-class openni2_video_stream : public openni::VideoStream
+class OpenNI2VideoStream : public openni::VideoStream
    {
    public:
-   openni2_video_stream(openni::Device& device, openni::SensorType sensor_type, std::string name);
-   ~openni2_video_stream() = default;
+   OpenNI2VideoStream(openni::Device& device, openni::SensorType sensor_type, std::string name);
+   ~OpenNI2VideoStream() = default;
+
+   void startStream(std::shared_ptr<OpenNI2FrameListener> frame_listener);
+   void stopStream(std::shared_ptr<OpenNI2FrameListener> frame_listener);
+   bool isStreamStarted() const
+      {
+      return (started_);
+      }
 
    protected:
    std::string name_;
    openni::SensorType sensor_type_;
+   bool started_;
    };
 
 
