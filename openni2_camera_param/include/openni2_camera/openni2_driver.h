@@ -112,9 +112,7 @@ class OpenNI2Driver : public rclcpp::Node
    const sensor_msgs::msg::Image::SharedPtr rawToFloatingPointConversion(
          const sensor_msgs::msg::Image::SharedPtr raw_image);
 
-   void setIRVideoMode(const OpenNI2VideoMode& ir_video_mode);
-   void setColorVideoMode(const OpenNI2VideoMode& color_video_mode);
-   void setDepthVideoMode(const OpenNI2VideoMode& depth_video_mode);
+   void setVideoMode(OpenNI2Device::StreamIndex stream_id, const OpenNI2VideoMode& video_mode);
 
    int extractBusID(const std::string& uri) const;
    bool isConnected() const;
@@ -184,12 +182,6 @@ class OpenNI2Driver : public rclcpp::Node
    bool auto_exposure_;
    bool auto_white_balance_;
    int exposure_;
-
-   //  bool ir_subscribers_;
-   //  bool color_subscribers_;
-   //  bool depth_subscribers_;
-   //  bool depth_raw_subscribers_;
-   //  bool projector_info_subscribers_;
 
    bool use_device_time_;
 

@@ -70,5 +70,6 @@
       "cinttypes": "cpp",
       "valarray": "cpp",
       "variant": "cpp"
-   }
+   },
+   "C_Cpp.dimInactiveRegions": false
 }

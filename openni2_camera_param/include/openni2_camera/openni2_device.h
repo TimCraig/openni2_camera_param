@@ -138,20 +138,16 @@ class OpenNI2Device
    void setImageRegistrationMode(bool enabled);
    void setDepthColorSync(bool enabled);
 
-   const OpenNI2VideoMode getIRVideoMode() const;
-   const OpenNI2VideoMode getColorVideoMode() const;
-   const OpenNI2VideoMode getDepthVideoMode() const;
-   const std::vector<OpenNI2VideoMode>& getSupportedIRVideoModes() const;
-   const std::vector<OpenNI2VideoMode>& getSupportedColorVideoModes() const;
-   const std::vector<OpenNI2VideoMode>& getSupportedDepthVideoModes() const;
+   const OpenNI2VideoMode getVideoMode(StreamIndex stream_id) const;
 
-   bool isIRVideoModeSupported(const OpenNI2VideoMode& video_mode) const;
-   bool isColorVideoModeSupported(const OpenNI2VideoMode& video_mode) const;
-   bool isDepthVideoModeSupported(const OpenNI2VideoMode& video_mode) const;
+   const std::vector<OpenNI2VideoMode>& getSupportedVideoModes(StreamIndex stream_id) const
+      {
+      return (getVideoStream(stream_id)->getSupportedVideoModes());
+      }
 
-   void setIRVideoMode(const OpenNI2VideoMode& video_mode);
-   void setColorVideoMode(const OpenNI2VideoMode& video_mode);
-   void setDepthVideoMode(const OpenNI2VideoMode& video_mode);
+   bool isVideoModeSupported(StreamIndex stream_id, const OpenNI2VideoMode& video_mode) const;
+
+   void setVideoMode(StreamIndex stream_id, const OpenNI2VideoMode& video_mode);
 
    void setFrameCallback(StreamIndex frame, FrameCallbackFunction callback)
       {
@@ -172,8 +168,14 @@ class OpenNI2Device
 
    void setUseDeviceTimer(bool enable);
 
+   const std::string& getStreamName(StreamIndex stream_id) const
+      {
+      return (stream_names_[stream_id]);
+      }
+
    protected:
    const std::array<int, 3> sensor_types_ = {openni::SENSOR_DEPTH, openni::SENSOR_COLOR, openni::SENSOR_IR};
+   const std::array<std::string, 4> stream_names_;
 
    void shutdown();
 
@@ -187,10 +189,6 @@ class OpenNI2Device
 
    std::vector<std::shared_ptr<OpenNI2FrameListener>> frame_listeners_;
    std::vector<std::shared_ptr<OpenNI2VideoStream>> video_streams_;
-
-   mutable std::vector<OpenNI2VideoMode> ir_video_modes_;
-   mutable std::vector<OpenNI2VideoMode> color_video_modes_;
-   mutable std::vector<OpenNI2VideoMode> depth_video_modes_;
 
    bool image_registration_activated_;
 

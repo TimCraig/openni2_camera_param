@@ -43,7 +43,10 @@
 namespace openni2_wrapper
    {
 OpenNI2Device::OpenNI2Device(const std::string& device_URI, rclcpp::Node* node)
-      : openni_device_(), image_registration_activated_(false), use_device_time_(false)
+      : openni_device_(),
+        image_registration_activated_(false),
+        use_device_time_(false),
+        stream_names_{std::string{"Depth"}, std::string{"Color"}, std::string{"IR"}}
    {
    openni::Status rc = openni::OpenNI::initialize();
    if (rc != openni::STATUS_OK)
@@ -68,10 +71,11 @@ OpenNI2Device::OpenNI2Device(const std::string& device_URI, rclcpp::Node* node)
    device_info_ = std::make_shared<openni::DeviceInfo>();
    *device_info_ = openni_device_->getDeviceInfo();
 
-
-   video_streams_.push_back(std::make_shared<OpenNI2VideoStream>(*openni_device_, openni::SENSOR_DEPTH, "Depth"));
-   video_streams_.push_back(std::make_shared<OpenNI2VideoStream>(*openni_device_, openni::SENSOR_COLOR, "Color"));
-   video_streams_.push_back(std::make_shared<OpenNI2VideoStream>(*openni_device_, openni::SENSOR_IR, "IR"));
+   video_streams_.push_back(
+         std::make_shared<OpenNI2VideoStream>(*openni_device_, openni::SENSOR_DEPTH, stream_names_[0]));
+   video_streams_.push_back(
+         std::make_shared<OpenNI2VideoStream>(*openni_device_, openni::SENSOR_COLOR, stream_names_[1]));
+   video_streams_.push_back(std::make_shared<OpenNI2VideoStream>(*openni_device_, openni::SENSOR_IR, stream_names_[2]));
 
    frame_listeners_ = {std::make_shared<OpenNI2FrameListener>(node), std::make_shared<OpenNI2FrameListener>(node),
                        std::make_shared<OpenNI2FrameListener>(node)};
@@ -128,48 +132,14 @@ float OpenNI2Device::getBaseline() const
    return (baseline_meters);
    }
 
-bool OpenNI2Device::isIRVideoModeSupported(const OpenNI2VideoMode& video_mode) const
+bool OpenNI2Device::isVideoModeSupported(StreamIndex stream_id, const OpenNI2VideoMode& video_mode) const
    {
-   getSupportedIRVideoModes();
+   const std::vector<OpenNI2VideoMode>& video_modes = getSupportedVideoModes(stream_id);
 
    bool supported = false;
 
-   std::vector<OpenNI2VideoMode>::const_iterator it = ir_video_modes_.begin();
-   std::vector<OpenNI2VideoMode>::const_iterator it_end = ir_video_modes_.end();
-   while (it != it_end && !supported)
-      {
-      supported = (*it == video_mode);
-      ++it;
-      }
-
-   return (supported);
-   }
-
-bool OpenNI2Device::isColorVideoModeSupported(const OpenNI2VideoMode& video_mode) const
-   {
-   getSupportedColorVideoModes();
-
-   bool supported = false;
-
-   std::vector<OpenNI2VideoMode>::const_iterator it = color_video_modes_.begin();
-   std::vector<OpenNI2VideoMode>::const_iterator it_end = color_video_modes_.end();
-   while (it != it_end && !supported)
-      {
-      supported = (*it == video_mode);
-      ++it;
-      }
-
-   return (supported);
-   }
-
-bool OpenNI2Device::isDepthVideoModeSupported(const OpenNI2VideoMode& video_mode) const
-   {
-   getSupportedDepthVideoModes();
-
-   bool supported = false;
-
-   std::vector<OpenNI2VideoMode>::const_iterator it = depth_video_modes_.begin();
-   std::vector<OpenNI2VideoMode>::const_iterator it_end = depth_video_modes_.end();
+   std::vector<OpenNI2VideoMode>::const_iterator it = video_modes.begin();
+   std::vector<OpenNI2VideoMode>::const_iterator it_end = video_modes.end();
    while (it != it_end && !supported)
       {
       supported = (*it == video_mode);
@@ -202,45 +172,6 @@ void OpenNI2Device::shutdown()
 #endif
    }
 
-const std::vector<OpenNI2VideoMode>& OpenNI2Device::getSupportedIRVideoModes() const
-   {
-   std::shared_ptr<openni::VideoStream> stream = getVideoStream(IR);
-   ir_video_modes_.clear();
-   if (stream)
-      {
-      const openni::SensorInfo& sensor_info = stream->getSensorInfo();
-      ir_video_modes_ = openni2_convert(sensor_info.getSupportedVideoModes());
-      }
-
-   return (ir_video_modes_);
-   }
-
-const std::vector<OpenNI2VideoMode>& OpenNI2Device::getSupportedColorVideoModes() const
-   {
-   std::shared_ptr<openni::VideoStream> stream = getVideoStream(COLOR);
-   color_video_modes_.clear();
-   if (stream)
-      {
-      const openni::SensorInfo& sensor_info = stream->getSensorInfo();
-      color_video_modes_ = openni2_convert(sensor_info.getSupportedVideoModes());
-      }
-
-   return (color_video_modes_);
-   }
-
-const std::vector<OpenNI2VideoMode>& OpenNI2Device::getSupportedDepthVideoModes() const
-   {
-   std::shared_ptr<openni::VideoStream> stream = getVideoStream(DEPTH);
-   depth_video_modes_.clear();
-   if (stream)
-      {
-      const openni::SensorInfo& sensor_info = stream->getSensorInfo();
-      depth_video_modes_ = openni2_convert(sensor_info.getSupportedVideoModes());
-      }
-
-   return (depth_video_modes_);
-   }
-
 void OpenNI2Device::setImageRegistrationMode(bool enabled)  // throw (OpenNI2Exception)
    {
    if (isImageRegistrationModeSupported())
@@ -250,15 +181,19 @@ void OpenNI2Device::setImageRegistrationMode(bool enabled)  // throw (OpenNI2Exc
          {
          openni::Status rc = openni_device_->setImageRegistrationMode(openni::IMAGE_REGISTRATION_DEPTH_TO_COLOR);
          if (rc != openni::STATUS_OK)
+            {
             THROW_OPENNI_EXCEPTION("Enabling image registration mode failed: \n%s\n",
                                    openni::OpenNI::getExtendedError());
+            }
          }
       else
          {
          openni::Status rc = openni_device_->setImageRegistrationMode(openni::IMAGE_REGISTRATION_OFF);
          if (rc != openni::STATUS_OK)
+            {
             THROW_OPENNI_EXCEPTION("Enabling image registration mode failed: \n%s\n",
                                    openni::OpenNI::getExtendedError());
+            }
          }
       }
 
@@ -269,16 +204,18 @@ void OpenNI2Device::setDepthColorSync(bool enabled)  // throw(OpenNI2Exception)
    {
    openni::Status rc = openni_device_->setDepthColorSyncEnabled(enabled);
    if (rc != openni::STATUS_OK)
+      {
       THROW_OPENNI_EXCEPTION("Enabling depth color synchronization failed: \n%s\n", openni::OpenNI::getExtendedError());
+      }
 
    return;
    }
 
-const OpenNI2VideoMode OpenNI2Device::getIRVideoMode() const  // throw (OpenNI2Exception)
+const OpenNI2VideoMode OpenNI2Device::getVideoMode(StreamIndex stream_id) const  // throw (OpenNI2Exception)
    {
    OpenNI2VideoMode ret;
 
-   std::shared_ptr<openni::VideoStream> stream = getVideoStream(IR);
+   std::shared_ptr<openni::VideoStream> stream = getVideoStream(stream_id);
    if (stream)
       {
       openni::VideoMode video_mode = stream->getVideoMode();
@@ -286,82 +223,25 @@ const OpenNI2VideoMode OpenNI2Device::getIRVideoMode() const  // throw (OpenNI2E
       ret = openni2_convert(video_mode);
       }
    else
-      THROW_OPENNI_EXCEPTION("Could not create video stream.");
-
-   return (ret);
-   }
-
-const OpenNI2VideoMode OpenNI2Device::getColorVideoMode() const  // throw (OpenNI2Exception)
-   {
-   OpenNI2VideoMode ret;
-
-   std::shared_ptr<openni::VideoStream> stream = getVideoStream(COLOR);
-   if (stream)
       {
-      openni::VideoMode video_mode = stream->getVideoMode();
-
-      ret = openni2_convert(video_mode);
+      THROW_OPENNI_EXCEPTION("Could not %s create video stream.", stream_names_[stream_id].c_str());
       }
-   else
-      THROW_OPENNI_EXCEPTION("Could not create video stream.");
 
    return (ret);
    }
 
-const OpenNI2VideoMode OpenNI2Device::getDepthVideoMode() const  // throw(OpenNI2Exception)
+void OpenNI2Device::setVideoMode(StreamIndex stream_id, const OpenNI2VideoMode& video_mode)  // throw (OpenNI2Exception)
    {
-   OpenNI2VideoMode ret;
-
-   std::shared_ptr<openni::VideoStream> stream = getVideoStream(DEPTH);
-   if (stream)
-      {
-      openni::VideoMode video_mode = stream->getVideoMode();
-
-      ret = openni2_convert(video_mode);
-      }
-   else
-      THROW_OPENNI_EXCEPTION("Could not create video stream.");
-
-   return (ret);
-   }
-
-void OpenNI2Device::setIRVideoMode(const OpenNI2VideoMode& video_mode)  // throw (OpenNI2Exception)
-   {
-   std::shared_ptr<openni::VideoStream> stream = getVideoStream(IR);
+   std::shared_ptr<openni::VideoStream> stream = getVideoStream(stream_id);
    if (stream)
       {
       const openni::VideoMode videoMode = openni2_convert(video_mode);
       const openni::Status rc = stream->setVideoMode(videoMode);
       if (rc != openni::STATUS_OK)
-         THROW_OPENNI_EXCEPTION("Couldn't set IR video mode: \n%s\n", openni::OpenNI::getExtendedError());
-      }
-
-   return;
-   }
-
-void OpenNI2Device::setColorVideoMode(const OpenNI2VideoMode& video_mode)  // throw (OpenNI2Exception)
-   {
-   std::shared_ptr<openni::VideoStream> stream = getVideoStream(COLOR);
-   if (stream)
-      {
-      const openni::VideoMode videoMode = openni2_convert(video_mode);
-      const openni::Status rc = stream->setVideoMode(videoMode);
-      if (rc != openni::STATUS_OK)
-         THROW_OPENNI_EXCEPTION("Couldn't set color video mode: \n%s\n", openni::OpenNI::getExtendedError());
-      }
-
-   return;
-   }
-
-void OpenNI2Device::setDepthVideoMode(const OpenNI2VideoMode& video_mode)  // throw (OpenNI2Exception)
-   {
-   std::shared_ptr<openni::VideoStream> stream = getVideoStream(DEPTH);
-   if (stream)
-      {
-      const openni::VideoMode videoMode = openni2_convert(video_mode);
-      const openni::Status rc = stream->setVideoMode(videoMode);
-      if (rc != openni::STATUS_OK)
-         THROW_OPENNI_EXCEPTION("Couldn't set depth video mode: \n%s\n", openni::OpenNI::getExtendedError());
+         {
+         THROW_OPENNI_EXCEPTION("Couldn't set video mode: %s\n%s\n", stream_names_[stream_id].c_str(),
+                                openni::OpenNI::getExtendedError());
+         }
       }
 
    return;
@@ -377,10 +257,9 @@ void OpenNI2Device::setAutoExposure(bool enable)  // throw (OpenNI2Exception)
          {
          const openni::Status rc = camera_seeting->setAutoExposureEnabled(enable);
          if (rc != openni::STATUS_OK)
-            THROW_OPENNI_EXCEPTION(
-                  "Couldn't set auto exposure: "
-                  "\n%s\n",
-                  openni::OpenNI::getExtendedError());
+            {
+            THROW_OPENNI_EXCEPTION("Couldn't set auto exposure: \n%s\n", openni::OpenNI::getExtendedError());
+            }
          }
       }
 
@@ -489,7 +368,7 @@ std::ostream& operator<<(std::ostream& stream, const OpenNI2Device& device)
    if (device.hasSensor(OpenNI2Device::IR))
       {
       stream << "IR sensor video modes:" << std::endl;
-      const std::vector<OpenNI2VideoMode>& video_modes = device.getSupportedIRVideoModes();
+      const std::vector<OpenNI2VideoMode>& video_modes = device.getSupportedVideoModes(OpenNI2Device::IR);
 
       std::vector<OpenNI2VideoMode>::const_iterator it = video_modes.begin();
       std::vector<OpenNI2VideoMode>::const_iterator it_end = video_modes.end();
@@ -506,7 +385,7 @@ std::ostream& operator<<(std::ostream& stream, const OpenNI2Device& device)
    if (device.hasSensor(OpenNI2Device::COLOR))
       {
       stream << "Color sensor video modes:" << std::endl;
-      const std::vector<OpenNI2VideoMode>& video_modes = device.getSupportedColorVideoModes();
+      const std::vector<OpenNI2VideoMode>& video_modes = device.getSupportedVideoModes(OpenNI2Device::COLOR);
 
       std::vector<OpenNI2VideoMode>::const_iterator it = video_modes.begin();
       std::vector<OpenNI2VideoMode>::const_iterator it_end = video_modes.end();
@@ -521,7 +400,7 @@ std::ostream& operator<<(std::ostream& stream, const OpenNI2Device& device)
    if (device.hasSensor(OpenNI2Device::DEPTH))
       {
       stream << "Depth sensor video modes:" << std::endl;
-      const std::vector<OpenNI2VideoMode>& video_modes = device.getSupportedDepthVideoModes();
+      const std::vector<OpenNI2VideoMode>& video_modes = device.getSupportedVideoModes(OpenNI2Device::DEPTH);
 
       std::vector<OpenNI2VideoMode>::const_iterator it = video_modes.begin();
       std::vector<OpenNI2VideoMode>::const_iterator it_end = video_modes.end();

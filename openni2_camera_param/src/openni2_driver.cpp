@@ -210,52 +210,19 @@ void OpenNI2Driver::advertiseROSTopics()
    return;
    }
 
-void OpenNI2Driver::setIRVideoMode(const OpenNI2VideoMode& ir_video_mode)
+void OpenNI2Driver::setVideoMode(OpenNI2Device::StreamIndex stream_id, const OpenNI2VideoMode& video_mode)
    {
-   if (device_->isIRVideoModeSupported(ir_video_mode))
+   if (device_->isVideoModeSupported(stream_id, video_mode))
       {
-      if (ir_video_mode != device_->getIRVideoMode())
+      if (video_mode != device_->getVideoMode(stream_id))
          {
-         device_->setIRVideoMode(ir_video_mode);
+         device_->setVideoMode(stream_id, video_mode);
          }
       }
    else
       {
-      RCLCPP_ERROR_STREAM(get_logger(), "Unsupported IR video mode - " << ir_video_mode);
-      }
-
-   return;
-   }
-
-void OpenNI2Driver::setColorVideoMode(const OpenNI2VideoMode& color_video_mode)
-   {
-   if (device_->isColorVideoModeSupported(color_video_mode))
-      {
-      if (color_video_mode != device_->getColorVideoMode())
-         {
-         device_->setColorVideoMode(color_video_mode);
-         }
-      }
-   else
-      {
-      RCLCPP_ERROR_STREAM(get_logger(), "Unsupported color video mode - " << color_video_mode);
-      }
-
-   return;
-   }
-
-void OpenNI2Driver::setDepthVideoMode(const OpenNI2VideoMode& depth_video_mode)
-   {
-   if (device_->isDepthVideoModeSupported(depth_video_mode))
-      {
-      if (depth_video_mode != device_->getDepthVideoMode())
-         {
-         device_->setDepthVideoMode(depth_video_mode);
-         }
-      }
-   else
-      {
-      RCLCPP_ERROR_STREAM(get_logger(), "Unsupported depth video mode - " << depth_video_mode);
+      RCLCPP_ERROR_STREAM(get_logger(),
+                          "Unsupported " << device_->getStreamName(stream_id) << " video mode - " << video_mode);
       }
 
    return;
@@ -267,9 +234,9 @@ void OpenNI2Driver::applyConfigToOpenNIDevice()
    data_skip_color_counter_ = 0;
    data_skip_depth_counter_ = 0;
 
-   setIRVideoMode(ir_video_mode_);
-   setColorVideoMode(color_video_mode_);
-   setDepthVideoMode(depth_video_mode_);
+   setVideoMode(OpenNI2Device::IR, ir_video_mode_);
+   setVideoMode(OpenNI2Device::COLOR, color_video_mode_);
+   setVideoMode(OpenNI2Device::DEPTH, depth_video_mode_);
 
    if (device_->isImageRegistrationModeSupported())
       {
@@ -309,7 +276,9 @@ void OpenNI2Driver::applyConfigToOpenNIDevice()
       // if (!config_init_ || (old_config_.auto_exposure !=
       // auto_exposure_))
       if (auto_exposure_)
+         {
          device_->setAutoExposure(auto_exposure_);
+         }
       }
    catch (const OpenNI2Exception& exception)
       {
