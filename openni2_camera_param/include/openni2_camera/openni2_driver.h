@@ -70,9 +70,6 @@ class OpenNI2Driver : public rclcpp::Node
    sensor_msgs::msg::CameraInfo::SharedPtr getDepthCameraInfo(int width, int height, rclcpp::Time time) const;
    sensor_msgs::msg::CameraInfo::SharedPtr getProjectorCameraInfo(int width, int height, rclcpp::Time time) const;
 
-   // resolves non-URI device IDs to URIs, e.g. '#1' is resolved to the
-   // URI of the first device
-   std::string resolveDeviceURI(const std::string& device_id);
    void initDevice();
 
    void advertiseROSTopics();
@@ -105,16 +102,12 @@ class OpenNI2Driver : public rclcpp::Node
       }
 
    void applyConfigToOpenNIDevice();
-
-   void genVideoModeTableMap();
-   bool lookupVideoMode(const std::string& mode, OpenNI2VideoMode& video_mode);
-
+#if 0
    const sensor_msgs::msg::Image::SharedPtr rawToFloatingPointConversion(
          const sensor_msgs::msg::Image::SharedPtr raw_image);
-
+#endif
    void setVideoMode(OpenNI2Device::StreamIndex stream_id, const OpenNI2VideoMode& video_mode);
 
-   int extractBusID(const std::string& uri) const;
    bool isConnected() const;
 
    void forceSetExposure();
@@ -137,7 +130,8 @@ class OpenNI2Driver : public rclcpp::Node
    //  image_transport::CameraPublisher pub_color_;
    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_rgb_;
    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_depth_raw_;
-   image_transport::CameraPublisher pub_depth_;
+   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_depth_;
+   // image_transport::CameraPublisher pub_depth_;
    //  image_transport::CameraPublisher pub_depth_raw_;
    image_transport::CameraPublisher pub_ir_;
    rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr pub_projector_info_;
@@ -146,7 +140,8 @@ class OpenNI2Driver : public rclcpp::Node
    rclcpp::TimerBase::SharedPtr timer_;
 
    /** \brief Camera info manager objects. */
-   std::shared_ptr<camera_info_manager::CameraInfoManager> color_info_manager_, ir_info_manager_;
+   std::shared_ptr<camera_info_manager::CameraInfoManager> color_info_manager_;
+   std::shared_ptr<camera_info_manager::CameraInfoManager> ir_info_manager_;
 
    OpenNI2VideoMode ir_video_mode_;
    OpenNI2VideoMode color_video_mode_;
@@ -160,8 +155,6 @@ class OpenNI2Driver : public rclcpp::Node
 
    bool color_depth_synchronization_;
    bool depth_registration_;
-
-   std::map<std::string, OpenNI2VideoMode> video_modes_lookup_;
 
    // dynamic reconfigure config
    double depth_ir_offset_x_;

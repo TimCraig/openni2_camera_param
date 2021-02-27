@@ -31,6 +31,7 @@
 
 #include "openni2_camera/openni2_driver.h"
 #include "openni2_camera/openni2_exception.h"
+#include "openni2_camera/openni2_images.h"
 
 #include <sensor_msgs/distortion_models.hpp>
 #include <sensor_msgs/image_encodings.hpp>
@@ -84,24 +85,23 @@ OpenNI2Driver::OpenNI2Driver(const rclcpp::NodeOptions& node_options)
    publish_depth_ = declare_parameter<bool>("publish_depth", false);
    publish_ir_ = declare_parameter<bool>("publish_ir", false);
 
-
-   genVideoModeTableMap();
+   OpenNI2VideoModes video_modes;
    std::string mode = declare_parameter<std::string>("ir_mode", "VGA_30Hz");
-   if (!lookupVideoMode(mode, ir_video_mode_))
+   if (!video_modes.lookupVideoMode(mode, ir_video_mode_))
       {
       RCLCPP_ERROR(get_logger(), "Undefined IR video mode");
       }
 
    mode = declare_parameter<std::string>("color_mode", "VGA_30Hz");
-   if (!lookupVideoMode(mode, color_video_mode_))
+   if (!video_modes.lookupVideoMode(mode, color_video_mode_))
       {
       RCLCPP_ERROR(get_logger(), "Undefined color video mode");
       }
 
    mode = declare_parameter<std::string>("depth_mode", "VGA_30Hz");
-   if (!lookupVideoMode(mode, depth_video_mode_))
+   if (!video_modes.lookupVideoMode(mode, depth_video_mode_))
       {
-      RCLCPP_ERROR(get_logger(), "Undefined color video mode");
+      RCLCPP_ERROR(get_logger(), "Undefined depth video mode");
       }
 
    ir_video_mode_.pixel_format_ = PIXEL_FORMAT_GRAY16;
@@ -187,7 +187,8 @@ void OpenNI2Driver::advertiseROSTopics()
       //   pub_depth_raw_ = it.advertiseCamera("depth/image_raw", 1);
       rclcpp::QoS qos(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
       pub_depth_raw_ = create_publisher<sensor_msgs::msg::Image>("depth/image_raw", qos);
-      pub_depth_ = it.advertiseCamera("depth/image", 1);
+      pub_depth_ = create_publisher<sensor_msgs::msg::Image>("depth/image_", qos);
+      //     pub_depth_ = it.advertiseCamera("depth/image", 1);
       pub_projector_info_ = create_publisher<sensor_msgs::msg::CameraInfo>("projector/camera_info", 1);
       }
 
@@ -242,9 +243,6 @@ void OpenNI2Driver::applyConfigToOpenNIDevice()
       {
       try
          {
-         // if (!config_init_ ||
-         // (old_config_.depth_registration !=
-         // depth_registration_))
          if (depth_registration_)
             {
             device_->setImageRegistrationMode(depth_registration_);
@@ -258,9 +256,6 @@ void OpenNI2Driver::applyConfigToOpenNIDevice()
 
    try
       {
-      // if (!config_init_ ||
-      // (old_config_.color_depth_synchronization !=
-      // color_depth_synchronization_))
       if (color_depth_synchronization_)
          {
          device_->setDepthColorSync(color_depth_synchronization_);
@@ -273,8 +268,6 @@ void OpenNI2Driver::applyConfigToOpenNIDevice()
 
    try
       {
-      // if (!config_init_ || (old_config_.auto_exposure !=
-      // auto_exposure_))
       if (auto_exposure_)
          {
          device_->setAutoExposure(auto_exposure_);
@@ -287,8 +280,6 @@ void OpenNI2Driver::applyConfigToOpenNIDevice()
 
    try
       {
-      // if (!config_init_ || (old_config_.auto_white_balance !=
-      // auto_white_balance_))
       if (auto_white_balance_)
          device_->setAutoWhiteBalance(auto_white_balance_);
       }
@@ -301,7 +292,7 @@ void OpenNI2Driver::applyConfigToOpenNIDevice()
    // https://github.com/ros-drivers/openni2_camera/issues/51 This is
    // only needed when any of the 3 setting change.  For simplicity this
    // check is always performed and exposure set.
-   if ((!auto_exposure_ && !auto_white_balance_) && exposure_ != 0)
+   if ((!auto_exposure_ && !auto_white_balance_) && (exposure_ != 0))
       {
       RCLCPP_INFO_STREAM(get_logger(), "Forcing exposure set, when auto exposure/white balance disabled");
       forceSetExposure();
@@ -312,8 +303,6 @@ void OpenNI2Driver::applyConfigToOpenNIDevice()
       // not have an effect
       try
          {
-         // if (!config_init_ || (old_config_.exposure !=
-         // exposure_))
          device_->setExposure(exposure_);
          }
       catch (const OpenNI2Exception& exception)
@@ -585,14 +574,16 @@ void OpenNI2Driver::newDepthFrameCallback(sensor_msgs::msg::Image::SharedPtr ima
             pub_depth_raw_->publish(*image);
             //            pub_depth_raw_.publish(image, cam_info);
             }
-#if 0
+
          if (publish_depth_)
             {
-            const sensor_msgs::msg::Image::SharedPtr floating_point_image = rawToFloatingPointConversion(image);
+            const sensor_msgs::msg::Image::SharedPtr floating_point_image =
+                  OpenNI2DepthImageFloat::rawToFloatingPointConversion(image);
             std::cout << "Publishing Depth Floating Point Image" << std::endl;
-            pub_depth_.publish(floating_point_image, cam_info);
+            pub_depth_->publish(*floating_point_image);
+            // pub_depth_.publish(floating_point_image, cam_info);
             }
-#endif
+
          // Projector "info" probably only useful for
          // working with disparity images
 #if 0
@@ -740,134 +731,13 @@ sensor_msgs::msg::CameraInfo::SharedPtr OpenNI2Driver::getProjectorCameraInfo(in
    return (info);
    }
 
-std::string OpenNI2Driver::resolveDeviceURI(const std::string& device_id)
-   {
-   // retrieve available device URIs, they look like this:
-   // "1d27/0601@1/5" which is <vendor ID>/<product ID>@<bus
-   // number>/<device number>
-   std::shared_ptr<std::vector<std::string>> available_device_URIs = device_manager_->getConnectedDeviceURIs();
-
-   // look for '#<number>' format
-   if (device_id.size() > 1 && device_id[0] == '#')
-      {
-      std::istringstream device_number_str(device_id.substr(1));
-      int device_number;
-      device_number_str >> device_number;
-      int device_index = device_number - 1;  // #1 refers to first device
-      if (device_index >= available_device_URIs->size() || device_index < 0)
-         {
-         THROW_OPENNI_EXCEPTION("Invalid device number %i, there are %zu devices connected.", device_number,
-                                available_device_URIs->size());
-         }
-      else
-         {
-         return (available_device_URIs->at(device_index));
-         }
-      }
-
-   // look for '<bus>@<number>' format
-   //   <bus>    is usb bus id, typically start at 1
-   //   <number> is the device number, for consistency with
-   //   openni_camera, these start at 1
-   //               although 0 specifies "any device on this bus"
-   else if ((device_id.size() > 1) && (device_id.find('@') != std::string::npos) &&
-            (device_id.find('/') == std::string::npos))
-      {
-      // get index of @ character
-      size_t index = device_id.find('@');
-      if (index <= 0)
-         {
-         THROW_OPENNI_EXCEPTION("%s is not a valid device URI, you must give the bus number before the @.",
-                                device_id.c_str());
-         }
-      if (index >= device_id.size() - 1)
-         {
-         THROW_OPENNI_EXCEPTION(
-               "%s is not a valid device URI, you must give the device number "
-               "after the @, specify 0 for any device on this bus",
-               device_id.c_str());
-         }
-
-      // pull out device number on bus
-      std::istringstream device_number_str(device_id.substr(index + 1));
-      int device_number;
-      device_number_str >> device_number;
-
-      // reorder to @<bus>
-      std::string bus = device_id.substr(0, index);
-      bus.insert(0, "@");
-
-      for (size_t i = 0; i < available_device_URIs->size(); ++i)
-         {
-         std::string s = (*available_device_URIs)[i];
-         if (s.find(bus) != std::string::npos)
-            {
-            // this matches our bus, check device
-            // number
-            std::ostringstream ss;
-            ss << bus << '/' << device_number;
-            if (device_number == 0 || s.find(ss.str()) != std::string::npos)
-               return (s);
-            }
-         }
-
-      THROW_OPENNI_EXCEPTION("Device not found %s", device_id.c_str());
-      }
-   else
-      {
-      // check if the device id given matches a serial number of a
-      // connected device
-      for (std::vector<std::string>::const_iterator it = available_device_URIs->begin();
-           it != available_device_URIs->end(); ++it)
-         {
-         try
-            {
-            std::string serial = device_manager_->getSerial(*it);
-            if (serial.size() > 0 && device_id == serial)
-               return (*it);
-            }
-         catch (const OpenNI2Exception& exception)
-            {
-            }
-         }
-
-      // everything else is treated as part of the device_URI
-      bool match_found = false;
-      std::string matched_uri;
-      for (size_t i = 0; i < available_device_URIs->size(); ++i)
-         {
-         std::string s = (*available_device_URIs)[i];
-         if (s.find(device_id) != std::string::npos)
-            {
-            if (!match_found)
-               {
-               matched_uri = s;
-               match_found = true;
-               }
-            else
-               {
-               // more than one match
-               THROW_OPENNI_EXCEPTION("Two devices match the given device id '%s': %s and %s.", device_id.c_str(),
-                                      matched_uri.c_str(), s.c_str());
-               }
-            }
-         }
-      if (match_found)
-         return (matched_uri);
-      }
-
-   return ("INVALID");
-   }
-
 void OpenNI2Driver::initDevice()
    {
    while (rclcpp::ok() && !device_)
       {
       try
          {
-         std::string device_URI = resolveDeviceURI(device_id_);
-         device_ = device_manager_->getDevice(device_URI, this);
-         bus_id_ = extractBusID(device_->getUri());
+         device_ = device_manager_->getDevice(device_id_, bus_id_, this);
          }
       catch (const OpenNI2Exception& exception)
          {
@@ -894,43 +764,11 @@ void OpenNI2Driver::initDevice()
    return;
    }
 
-int OpenNI2Driver::extractBusID(const std::string& uri) const
-   {
-   // URI format is <vendor ID>/<product ID>@<bus number>/<device number>
-   unsigned first = uri.find('@');
-   unsigned last = uri.find('/', first);
-   std::string bus_id = uri.substr(first + 1, last - first - 1);
-   int rtn = atoi(bus_id.c_str());
-
-   return (rtn);
-   }
-
-bool OpenNI2Driver::isConnected() const
-   {
-   bool ret = false;
-
-   // TODO: The current isConnected logic assumes that there is only one
-   // sensor on the bus of interest.  In the future, we could compare
-   // serial numbers to make certain the same camera as been
-   // re-connected.
-   std::shared_ptr<std::vector<std::string>> list = device_manager_->getConnectedDeviceURIs();
-   for (std::size_t i = 0; i != list->size(); ++i)
-      {
-      int uri_bus_id = extractBusID(list->at(i));
-      if (uri_bus_id == bus_id_)
-         {
-         ret = true;
-         }
-      }
-
-   return (ret);
-   }
-
 void OpenNI2Driver::monitorConnection()
    {
    // If the connection is lost, clean up the device.  If connected
    // and the devices is not initialized, then initialize.
-   if (isConnected())
+   if (device_manager_->isConnected(bus_id_))
       {
       if (!device_)
          {
@@ -939,14 +777,12 @@ void OpenNI2Driver::monitorConnection()
             {
                {
                std::lock_guard<std::mutex> lock(connect_mutex_);
-               std::string device_URI = resolveDeviceURI(device_id_);
-               device_ = device_manager_->getDevice(device_URI, this);
-               bus_id_ = extractBusID(device_->getUri());
+               device_ = device_manager_->getDevice(device_id_, bus_id_, this);
+
                while (rclcpp::ok() && !device_->isValid())
                   {
                   RCLCPP_INFO(get_logger(),
-                              "Waiting for device initialization, before "
-                              "configuring and restarting publishers");
+                              "Waiting for device initialization, before configuring and restarting publishers");
                   std::this_thread::sleep_for(100ms);
                   }
                }
@@ -960,14 +796,10 @@ void OpenNI2Driver::monitorConnection()
             RCLCPP_INFO_STREAM(get_logger(), "Starting color stream to adjust camera");
             colorConnectCb();
 
-            // If auto exposure/white balance is
-            // disabled, then the rbg image won't be
-            // adjusted properly.  This is a work
-            // around for now, but the final
-            // implimentation should only allow
-            // reconnection when auto exposure and
-            // white balance are disabled, and FIXED
-            // exposure is used instead.
+            // If auto exposure/white balance is disabled, then the rbg image won't be
+            // adjusted properly.  This is a work around for now, but the final
+            // implimentation should only allow reconnection when auto exposure and
+            // white balance are disabled, and FIXED exposure is used instead.
             if ((!auto_exposure_ && !auto_white_balance_) && (exposure_ == 0))
                {
                RCLCPP_WARN_STREAM(get_logger(),
@@ -1010,148 +842,6 @@ void OpenNI2Driver::monitorConnection()
       }
 
    return;
-   }
-
-void OpenNI2Driver::genVideoModeTableMap()
-   {
-   video_modes_lookup_.clear();
-
-   OpenNI2VideoMode video_mode;
-
-   // SXGA_30Hz
-   video_mode.x_resolution_ = 1280;
-   video_mode.y_resolution_ = 1024;
-   video_mode.frame_rate_ = 30;
-
-   video_modes_lookup_["SXGA_30Hz"] = video_mode;
-
-   // SXGA_15Hz
-   video_mode.x_resolution_ = 1280;
-   video_mode.y_resolution_ = 1024;
-   video_mode.frame_rate_ = 15;
-
-   video_modes_lookup_["SXGA_15hz"] = video_mode;
-
-   // XGA_30Hz
-   video_mode.x_resolution_ = 1280;
-   video_mode.y_resolution_ = 720;
-   video_mode.frame_rate_ = 30;
-
-   video_modes_lookup_["XGA_30Hz"] = video_mode;
-
-   // XGA_15Hz
-   video_mode.x_resolution_ = 1280;
-   video_mode.y_resolution_ = 720;
-   video_mode.frame_rate_ = 15;
-
-   video_modes_lookup_["XGA_15Hz"] = video_mode;
-
-   // VGA_30Hz
-   video_mode.x_resolution_ = 640;
-   video_mode.y_resolution_ = 480;
-   video_mode.frame_rate_ = 30;
-
-   video_modes_lookup_["VGA_30Hz"] = video_mode;
-
-   // VGA_25Hz
-   video_mode.x_resolution_ = 640;
-   video_mode.y_resolution_ = 480;
-   video_mode.frame_rate_ = 25;
-
-   video_modes_lookup_["VGA_25Hz"] = video_mode;
-
-   // QVGA_25Hz
-   video_mode.x_resolution_ = 320;
-   video_mode.y_resolution_ = 240;
-   video_mode.frame_rate_ = 25;
-
-   video_modes_lookup_["QVGA_25Hz"] = video_mode;
-
-   // QVGA_30Hz
-   video_mode.x_resolution_ = 320;
-   video_mode.y_resolution_ = 240;
-   video_mode.frame_rate_ = 30;
-
-   video_modes_lookup_["QVGA_30Hz"] = video_mode;
-
-   // QVGA_60Hz
-   video_mode.x_resolution_ = 320;
-   video_mode.y_resolution_ = 240;
-   video_mode.frame_rate_ = 60;
-
-   video_modes_lookup_["QVGA_60Hz"] = video_mode;
-
-   // QQVGA_25Hz
-   video_mode.x_resolution_ = 160;
-   video_mode.y_resolution_ = 120;
-   video_mode.frame_rate_ = 25;
-
-   video_modes_lookup_["QVGA_25Hz"] = video_mode;
-
-   // QQVGA_30Hz
-   video_mode.x_resolution_ = 160;
-   video_mode.y_resolution_ = 120;
-   video_mode.frame_rate_ = 30;
-
-   video_modes_lookup_["QQVGA_30Hz"] = video_mode;
-
-   // QQVGA_60Hz
-   video_mode.x_resolution_ = 160;
-   video_mode.y_resolution_ = 120;
-   video_mode.frame_rate_ = 60;
-
-   video_modes_lookup_["QQVGA_60Hz"] = video_mode;
-
-   return;
-   }
-
-bool OpenNI2Driver::lookupVideoMode(const std::string& mode, OpenNI2VideoMode& video_mode)
-   {
-   bool ret = false;
-
-   auto it = video_modes_lookup_.find(mode);
-   if (it != video_modes_lookup_.end())
-      {
-      video_mode = it->second;
-      ret = true;
-      }
-
-   return (ret);
-   }
-
-const sensor_msgs::msg::Image::SharedPtr OpenNI2Driver::rawToFloatingPointConversion(
-      const sensor_msgs::msg::Image::SharedPtr raw_image)
-   {
-   static const float bad_point = std::numeric_limits<float>::quiet_NaN();
-
-   sensor_msgs::msg::Image::SharedPtr new_image = std::make_shared<sensor_msgs::msg::Image>();
-
-   new_image->header = raw_image->header;
-   new_image->width = raw_image->width;
-   new_image->height = raw_image->height;
-   new_image->is_bigendian = 0;
-   new_image->encoding = sensor_msgs::image_encodings::TYPE_32FC1;
-   new_image->step = sizeof(float) * raw_image->width;
-
-   std::size_t data_size = new_image->width * new_image->height;
-   new_image->data.resize(data_size * sizeof(float));
-
-   const unsigned short* in_ptr = reinterpret_cast<const unsigned short*>(&raw_image->data[0]);
-   float* out_ptr = reinterpret_cast<float*>(&new_image->data[0]);
-
-   for (std::size_t i = 0; i < data_size; ++i, ++in_ptr, ++out_ptr)
-      {
-      if (*in_ptr == 0 || *in_ptr == 0x7FF)
-         {
-         *out_ptr = bad_point;
-         }
-      else
-         {
-         *out_ptr = static_cast<float>(*in_ptr) / 1000.0f;
-         }
-      }
-
-   return (new_image);
    }
 
    }  // namespace openni2_wrapper

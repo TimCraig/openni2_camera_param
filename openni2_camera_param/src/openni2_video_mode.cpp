@@ -91,4 +91,27 @@ bool operator==(const OpenNI2VideoMode& video_mode_a, const OpenNI2VideoMode& vi
           (video_mode_a.pixel_format_ == video_mode_b.pixel_format_);
    }
 
+const std::map<std::string, OpenNI2VideoMode> OpenNI2VideoModes::video_modes_ = {
+      {"SXGA_30Hz", OpenNI2VideoMode{1280, 1024, 30}}, {"SXGA_15Hz", OpenNI2VideoMode{1280, 1024, 15}},
+      {"XGA_30Hz", OpenNI2VideoMode{1280, 720, 30}},   {"XGA_15Hz", OpenNI2VideoMode{1280, 720, 15}},
+      {"VGA_30Hz", OpenNI2VideoMode{640, 480, 30}},    {"VGA_25Hz", OpenNI2VideoMode{640, 480, 25}},
+      {"QVGA_25Hz", OpenNI2VideoMode{320, 240, 25}},   {"QVGA_30Hz", OpenNI2VideoMode{320, 240, 30}},
+      {"QVGA_60Hz", OpenNI2VideoMode{320, 240, 60}},   {"QQVGA_25Hz", OpenNI2VideoMode{160, 120, 25}},
+      {"QQVGA_30Hz", OpenNI2VideoMode{160, 120, 30}},  {"QQVGA_60Hz", OpenNI2VideoMode{160, 120, 60}}};
+
+bool OpenNI2VideoModes::lookupVideoMode(const std::string& mode, OpenNI2VideoMode& video_mode) const
+   {
+   bool ret = false;
+
+   auto it = video_modes_.find(mode);
+   if (it != video_modes_.end())
+      {
+      video_mode = it->second;
+      ret = true;
+      }
+
+   return (ret);
+   }
+
+
    }  // namespace openni2_wrapper

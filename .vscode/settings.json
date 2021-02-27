@@ -69,7 +69,8 @@
       "cfenv": "cpp",
       "cinttypes": "cpp",
       "valarray": "cpp",
-      "variant": "cpp"
+      "variant": "cpp",
+      "regex": "cpp"
    },
    "C_Cpp.dimInactiveRegions": false
 }

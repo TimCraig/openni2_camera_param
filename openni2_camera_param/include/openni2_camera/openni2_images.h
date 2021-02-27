@@ -28,63 +28,39 @@
  *
  *      Author: Julius Kammerl (jkammerl@willowgarage.com)
  */
+/*
+ * Feb 27, 2021
+ * This file was not part of the original Willow Garage release but was created by refactoring openni2_device
+ * to place variables and functions pretaining to video streams in a more logical place.  Hopefully, doing it this
+ * way makes the code a bit easier to read and understand.
+ *
+ *     Tim Craig (TimCraig@Druai.com)
+ */
 
 #pragma once
 
-#ifndef OPENNI2_DEVICE_MANAGER_H_
-#define OPENNI2_DEVICE_MANAGER_H_
+#ifndef OPENNI2_IMAGES_H
+#define OPENNI2_IMAGES_H
 
-#include "openni2_camera/openni2_device.h"
-#include "openni2_camera/openni2_device_info.h"
-
-#include <rclcpp/rclcpp.hpp>
-
-#include <memory>
-#include <ostream>
-#include <string>
-#include <vector>
+#include <sensor_msgs/msg/image.hpp>
 
 namespace openni2_wrapper
    {
-class OpenNI2DeviceListener;
-
-class OpenNI2DeviceManager
+class OpenNI2DepthImageFloat : public sensor_msgs::msg::Image
    {
    public:
-   OpenNI2DeviceManager();
-   virtual ~OpenNI2DeviceManager() = default;
+   OpenNI2DepthImageFloat() = default;
+   OpenNI2DepthImageFloat(const OpenNI2DepthImageFloat &) = default;
+   OpenNI2DepthImageFloat &operator=(OpenNI2DepthImageFloat &&) = default;
+   OpenNI2DepthImageFloat &operator=(const OpenNI2DepthImageFloat &) = default;
+   ~OpenNI2DepthImageFloat();
 
-   static std::shared_ptr<OpenNI2DeviceManager> getSingelton();
+   static const sensor_msgs::msg::Image::SharedPtr rawToFloatingPointConversion(
+         const sensor_msgs::msg::Image::SharedPtr raw_image);
 
-   std::shared_ptr<std::vector<OpenNI2DeviceInfo>> getConnectedDeviceInfos() const;
-   std::shared_ptr<std::vector<std::string>> getConnectedDeviceURIs() const;
-   std::size_t getNumOfConnectedDevices() const;
-
-   std::shared_ptr<OpenNI2Device> getAnyDevice(rclcpp::Node* node) const
-      {
-      return (std::make_shared<OpenNI2Device>("", node));
-      }
-
-   std::shared_ptr<OpenNI2Device> getDevicePtr(const std::string& device_URI, rclcpp::Node* node) const
-      {
-      return (std::make_shared<OpenNI2Device>(device_URI, node));
-      }
-
-   std::shared_ptr<OpenNI2Device> getDevice(const std::string& device_id, int& bus_id, rclcpp::Node* node);
-
-   // resolves non-URI device IDs to URIs, e.g. '#1' is resolved to the URI of the first device
-   std::string resolveDeviceURI(const std::string& device_id);
-   std::string getSerial(const std::string& device_URI) const;
-   int extractBusID(const std::string& uri) const;
-   bool isConnected(int bus_id) const;
-
-   protected:
-   std::shared_ptr<OpenNI2DeviceListener> device_listener_;
-
-   static std::shared_ptr<OpenNI2DeviceManager> singelton_;
+   private:
    };
 
-std::ostream& operator<<(std::ostream& stream, const OpenNI2DeviceManager& device_manager);
 
    }  // namespace openni2_wrapper
 

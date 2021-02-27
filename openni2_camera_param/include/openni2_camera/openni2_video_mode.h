@@ -35,6 +35,7 @@
 #define OPENNI2_VIDEO_MODE_H_
 
 #include <cstddef>
+#include <map>
 #include <ostream>
 
 namespace openni2_wrapper
@@ -42,6 +43,8 @@ namespace openni2_wrapper
 // copied from OniEnums.h
 enum PixelFormat
    {
+   PIXEL_FORMAT_UNINITIALIZED = 0,
+
    // Depth
    PIXEL_FORMAT_DEPTH_1_MM = 100,
    PIXEL_FORMAT_DEPTH_100_UM = 101,
@@ -58,6 +61,20 @@ enum PixelFormat
 
 struct OpenNI2VideoMode
    {
+   OpenNI2VideoMode() = default;
+
+   OpenNI2VideoMode(std::size_t x_resolution, std::size_t y_resolution, double frame_rate,
+                    PixelFormat pixel_format = PIXEL_FORMAT_UNINITIALIZED)
+         : x_resolution_{x_resolution},
+           y_resolution_{y_resolution},
+           frame_rate_{frame_rate},
+           pixel_format_{pixel_format}
+      {
+      return;
+      }
+
+   ~OpenNI2VideoMode() = default;
+
    std::size_t x_resolution_;
    std::size_t y_resolution_;
    double frame_rate_;
@@ -71,6 +88,23 @@ inline bool operator!=(const OpenNI2VideoMode& video_mode_a, const OpenNI2VideoM
    {
    return !(video_mode_a == video_mode_b);
    }
+
+class OpenNI2VideoModes
+   {
+   public:
+   OpenNI2VideoModes() = default;
+   OpenNI2VideoModes(OpenNI2VideoModes&&) = default;
+   OpenNI2VideoModes(const OpenNI2VideoModes&) = default;
+   OpenNI2VideoModes& operator=(OpenNI2VideoModes&&) = default;
+   OpenNI2VideoModes& operator=(const OpenNI2VideoModes&) = default;
+   ~OpenNI2VideoModes() = default;
+   ;
+
+   bool lookupVideoMode(const std::string& mode, OpenNI2VideoMode& video_mode) const;
+
+   protected:
+   static const std::map<std::string, OpenNI2VideoMode> video_modes_;
+   };
 
    }  // end of namespace openni2_wrapper
 
