@@ -51,6 +51,8 @@
 
 #include <mutex>
 
+#define USE_IMAGE_TRANSPORT
+
 namespace openni2_wrapper
    {
 class OpenNI2Driver : public rclcpp::Node
@@ -102,13 +104,7 @@ class OpenNI2Driver : public rclcpp::Node
       }
 
    void applyConfigToOpenNIDevice();
-#if 0
-   const sensor_msgs::msg::Image::SharedPtr rawToFloatingPointConversion(
-         const sensor_msgs::msg::Image::SharedPtr raw_image);
-#endif
    void setVideoMode(OpenNI2Device::StreamIndex stream_id, const OpenNI2VideoMode& video_mode);
-
-   bool isConnected() const;
 
    void forceSetExposure();
 
@@ -127,13 +123,17 @@ class OpenNI2Driver : public rclcpp::Node
    std::mutex connect_mutex_;
 
    // published topics
-   //  image_transport::CameraPublisher pub_color_;
-   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_rgb_;
+#if defined USE_IMAGE_TRANSPORT
+   image_transport::CameraPublisher pub_color_;
+   image_transport::CameraPublisher pub_depth_;
+   image_transport::CameraPublisher pub_depth_raw_;
+   image_transport::CameraPublisher pub_ir_;
+#else
+   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_color_;
    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_depth_raw_;
    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_depth_;
-   // image_transport::CameraPublisher pub_depth_;
-   //  image_transport::CameraPublisher pub_depth_raw_;
-   image_transport::CameraPublisher pub_ir_;
+   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_ir_;
+#endif
    rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr pub_projector_info_;
 
    /** \brief timer for connection monitoring thread */
@@ -182,6 +182,7 @@ class OpenNI2Driver : public rclcpp::Node
    bool publish_depth_raw_;
    bool publish_depth_;
    bool publish_ir_;
+   bool publish_projector_info_;
    };
 
    }  // namespace openni2_wrapper
